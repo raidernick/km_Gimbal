@@ -118,7 +118,7 @@ namespace km_Lib
 		{
 			return "Yaw Gimbal\n"+yawGimbalRange+"\n" +
 				"Pitch Gimbal\n"+pitchGimbalRange+"\n"+
-				"KM Gimbal plugin (c) dtobi";
+                "KM Gimbal plugin by dtobi";
 		}
 
 		public override void OnStart (StartState state)
