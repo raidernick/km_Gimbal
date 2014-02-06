@@ -87,9 +87,13 @@ namespace km_Lib
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false)]
         public bool invertRoll = false;
 
+        bool isRunning = false;
 
         public List<UnityEngine.Transform>  gimbalTransforms;
 		public List<UnityEngine.Quaternion> initRots;
+
+        private ModuleEngines engine;
+
                 		  
 		private void printd(int debugPriority, string text){
 			if (debug && debugPriority <= debugLevel)
@@ -104,15 +108,28 @@ namespace km_Lib
 		[KSPAction("Toggle Gimbal")]
 		public void toggleGimbal (KSPActionParam param){
 			enableGimbal = !enableGimbal;
-			for (int i = 0; i < gimbalTransforms.Count; i++) {
-				gimbalTransforms [i].localRotation = initRots [i];
-			}
+            resetTransform ();  
 		}
+
+        [KSPAction("Trim +")]
+        public void plusTrim (KSPActionParam param){
+            trimX=trimX+1;
+        }
+        [KSPAction("Trim -")]
+        public void minusTrim (KSPActionParam param){
+            trimX=trimX-1;
+        }
 
         [KSPAction("Toggle Trim")]
         public void toggletTrimX (KSPActionParam param){
             enableTrim = !enableTrim;
 		}
+
+        private void resetTransform() {
+            for (int i = 0; i < gimbalTransforms.Count; i++) {
+                gimbalTransforms [i].localRotation = initRots [i];
+            }
+        }
 
 		public override string GetInfo ()
 		{
@@ -131,13 +148,16 @@ namespace km_Lib
 				initRots.Add(transform.localRotation);
 			}
 
-			if (state == StartState.Editor)
-			{
-					this.part.OnEditorAttach += OnEditorAttach;
-					this.part.OnEditorDetach += OnEditorDetach;
-					this.part.OnEditorDestroy += OnEditorDestroy;
-					OnEditorAttach();
-			}
+            if (state == StartState.Editor) {
+                this.part.OnEditorAttach += OnEditorAttach;
+                this.part.OnEditorDetach += OnEditorDetach;
+                this.part.OnEditorDestroy += OnEditorDestroy;
+                OnEditorAttach ();
+            } else {
+                engine = this.part.GetComponentInChildren <ModuleEngines> ();
+                if (engine == null)
+                    print ("Gimbal ERROR: ModuleEngines not found!");
+            }
 			base.OnStart (state);
 		}
 
@@ -177,12 +197,19 @@ namespace km_Lib
 
 		}
 
+        public override void OnUpdate ()
+        {
+            // enable activation on action group withou staging
+            if (engine != null && engine.getIgnitionState && !isRunning) {
+                this.part.force_activate ();
+            }
+        }
+
 		public override void OnFixedUpdate(){
 			if (HighLogic.LoadedSceneIsEditor)
 				return;
-			if(FlightGlobals.ActiveVessel != vessel)
-				return;
-
+            //if(FlightGlobals.ActiveVessel != vessel)
+            //	return;
             updateFlight ();
 		}
 
@@ -198,8 +225,15 @@ namespace km_Lib
 		}
 
 		private void updateFlight(){
-			if (!enableGimbal)
-				return;
+            if (!enableGimbal || engine != null && !engine.EngineIgnited) {
+                if (isRunning) {
+                    resetTransform ();
+                    isRunning = false;
+                }
+                return;           
+            }
+			    
+            isRunning = true;
 
 			// this needs to be here because these varaibles will be changed
             currentPitch = vessel.ctrlState.pitch * (invertPitch?-1:1);
@@ -246,8 +280,8 @@ namespace km_Lib
 				// determine if we are in front or behind the CoM tgo flip axis (Goddard style rockets)
 				var pitchYawSign = Math.Sign (Vector3.Dot (vessel.findWorldCenterOfMass () - part.rigidbody.worldCenterOfMass, vessel.transform.up));
 
-                var rotX = Math.Min (pitchGimbalRange, (enableTrim?trimX:0) + (currentYaw * yawContributionX * pitchYawSign + currentPitch * pitchContributionX * pitchYawSign + currentRoll * rollContributionX) * pitchGimbalRange);
-				var rotY = Math.Min (yawGimbalRange, (currentYaw * yawContributionY * pitchYawSign + currentPitch * pitchContributionY * pitchYawSign + currentRoll * rollContributionY) * yawGimbalRange * -1);
+                var rotX = Mathf.Clamp((enableTrim?trimX:0) + (float)(currentYaw * yawContributionX * pitchYawSign + currentPitch * pitchContributionX * pitchYawSign + currentRoll * rollContributionX) * pitchGimbalRange, -pitchGimbalRange, pitchGimbalRange);
+                var rotY = Mathf.Clamp ((float)(currentYaw * yawContributionY * pitchYawSign + currentPitch * pitchContributionY * pitchYawSign + currentRoll * rollContributionY) * yawGimbalRange * -1, -yawGimbalRange, yawGimbalRange);
 
 				Vector3 rotVec = new Vector3 ((float)rotX, (float)rotY, 0f);
 
