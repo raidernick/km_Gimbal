@@ -93,7 +93,7 @@ namespace km_Lib
 		public List<UnityEngine.Quaternion> initRots;
 
         private ModuleEngines engine;
-
+        private ModuleEnginesFX engineFX;
                 		  
 		private void printd(int debugPriority, string text){
 			if (debug && debugPriority <= debugLevel)
@@ -157,6 +157,10 @@ namespace km_Lib
                 engine = this.part.GetComponentInChildren <ModuleEngines> ();
                 if (engine == null)
                     print ("Gimbal ERROR: ModuleEngines not found!");
+                engineFX = this.part.GetComponentInChildren <ModuleEnginesFX> ();
+                if (engineFX == null)
+                    print ("Gimbal ERROR: ModuleEngineFX not found!");
+
             }
 			base.OnStart (state);
 		}
@@ -200,7 +204,8 @@ namespace km_Lib
         public override void OnUpdate ()
         {
             // enable activation on action group withou staging
-            if (engine != null && engine.getIgnitionState && !isRunning) {
+            if (((engine != null && engine.getIgnitionState)
+                ||  (engineFX != null && engineFX.getIgnitionState)) && !isRunning) {
                 this.part.force_activate ();
             }
         }
@@ -225,7 +230,8 @@ namespace km_Lib
 		}
 
 		private void updateFlight(){
-            if (!enableGimbal || engine != null && !engine.EngineIgnited) {
+            if (!enableGimbal || (engine != null && !engine.EngineIgnited) || 
+                (engineFX != null && !engineFX.EngineIgnited)) {
                 if (isRunning) {
                     resetTransform ();
                     isRunning = false;
