@@ -120,6 +120,15 @@ namespace km_Lib
             trimX=trimX-1;
         }
 
+        [KSPAction("Trim +5")]
+        public void plus5Trim (KSPActionParam param){
+            trimX=trimX+5;
+        }
+        [KSPAction("Trim -5")]
+        public void minus5Trim (KSPActionParam param){
+            trimX=trimX-5;
+        }
+
         [KSPAction("Toggle Trim")]
         public void toggletTrimX (KSPActionParam param){
             enableTrim = !enableTrim;
