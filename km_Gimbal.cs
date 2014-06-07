@@ -45,9 +45,13 @@ namespace km_Lib
 			UI_Toggle(disabledText = "Disabled", enabledText = "Enabled")]
 		public bool enableRoll = false;
 
-		[KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Pitch-Trim") , UI_FloatRange(minValue = -14f, maxValue = 14f, stepIncrement = 1f)]
+        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "X-Trim") , UI_FloatRange(minValue = -14f, maxValue = 14f, stepIncrement = 1f)]
         public float trimX      = 0;
         public float lastTrimX  = 0; // remember the last value to know when to update the editor
+
+        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Y-Trim") , UI_FloatRange(minValue = -14f, maxValue = 14f, stepIncrement = 1f)]
+        public float trimY      = 0;
+        public float lastTrimY  = 0; // remember the last value to know when to update the editor
 
         [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Trim"),
             UI_Toggle(disabledText="Disabled", enabledText="Enabled")]
@@ -92,8 +96,8 @@ namespace km_Lib
         public List<UnityEngine.Transform>  gimbalTransforms;
 		public List<UnityEngine.Quaternion> initRots;
 
-        private ModuleEngines engine;
-        private ModuleEnginesFX engineFX;
+        private ModuleEngines engine = null;
+        private ModuleEnginesFX engineFX = null;
                 		  
 		private void printd(int debugPriority, string text){
 			if (debug && debugPriority <= debugLevel)
@@ -111,26 +115,45 @@ namespace km_Lib
             resetTransform ();  
 		}
 
-        [KSPAction("Trim +")]
-        public void plusTrim (KSPActionParam param){
+        [KSPAction("X Trim +")]
+        public void plusTrimX (KSPActionParam param){
             trimX=trimX+1;
         }
-        [KSPAction("Trim -")]
+        [KSPAction("X TrimX -")]
         public void minusTrim (KSPActionParam param){
             trimX=trimX-1;
         }
 
-        [KSPAction("Trim +5")]
+        [KSPAction("X TrimX +5")]
         public void plus5Trim (KSPActionParam param){
             trimX=trimX+5;
         }
-        [KSPAction("Trim -5")]
+        [KSPAction("X TrimX -5")]
         public void minus5Trim (KSPActionParam param){
             trimX=trimX-5;
         }
 
+        [KSPAction("Y Trim +")]
+        public void plusTrimY (KSPActionParam param){
+            trimY=trimY+1;
+        }
+        [KSPAction("Y Trim -")]
+        public void minusTrimY (KSPActionParam param){
+            trimY=trimY-1;
+        }
+
+        [KSPAction("Y Trim +5")]
+        public void plus5TrimY (KSPActionParam param){
+            trimY=trimY+5;
+        }
+        [KSPAction("Y Trim -5")]
+        public void minus5TrimY (KSPActionParam param){
+            trimY=trimY-5;
+        }
+
+
         [KSPAction("Toggle Trim")]
-        public void toggletTrimX (KSPActionParam param){
+        public void toggletTrim (KSPActionParam param){
             enableTrim = !enableTrim;
 		}
 
@@ -163,12 +186,14 @@ namespace km_Lib
                 this.part.OnEditorDestroy += OnEditorDestroy;
                 OnEditorAttach ();
             } else {
-                engine = this.part.GetComponentInChildren <ModuleEngines> ();
-                if (engine == null)
-                    print ("Gimbal ERROR: ModuleEngines not found!");
                 engineFX = this.part.GetComponentInChildren <ModuleEnginesFX> ();
-                if (engineFX == null)
+                if (engineFX == null) {
                     print ("Gimbal ERROR: ModuleEngineFX not found!");
+                    engine = this.part.GetComponentInChildren <ModuleEngines> ();
+                    if (engine == null)
+                        print ("Gimbal ERROR: No engine module found. ModuleEngines not found!");
+                }
+               
 
             }
 			base.OnStart (state);
@@ -215,6 +240,8 @@ namespace km_Lib
             // enable activation on action group withou staging
             if (((engine != null && engine.getIgnitionState)
                 ||  (engineFX != null && engineFX.getIgnitionState)) && !isRunning) {
+                if(engine != null ) print ("Forcing activation " + engine.getIgnitionState);
+                if(engineFX != null ) print ("Forcing activation " + engineFX.getIgnitionState);
                 this.part.force_activate ();
             }
         }
@@ -228,14 +255,17 @@ namespace km_Lib
 		}
 
 		private void updateEditor(){
-			if (trimX != lastTrimX) {
-				Vector3 rotVec = new Vector3 (trimX, 0f, 0f);
+            if (trimX != lastTrimX || trimY != lastTrimY) {
+                Vector3 rotVec = new Vector3 (
+                    Mathf.Clamp(trimX, pitchGimbalRange*-1, pitchGimbalRange),
+                    Mathf.Clamp(trimY, yawGimbalRange*-1, yawGimbalRange), 0f);
 				for (int i = 0; i < gimbalTransforms.Count; i++) {
 					gimbalTransforms [i].localRotation = initRots [i];
 					gimbalTransforms [i].Rotate (rotVec);
 				}
 			}
 			lastTrimX = trimX;
+            lastTrimY = trimY;
 		}
 
 		private void updateFlight(){
@@ -295,8 +325,8 @@ namespace km_Lib
 				// determine if we are in front or behind the CoM tgo flip axis (Goddard style rockets)
 				var pitchYawSign = Math.Sign (Vector3.Dot (vessel.findWorldCenterOfMass () - part.rigidbody.worldCenterOfMass, vessel.transform.up));
 
-                var rotX = Mathf.Clamp((enableTrim?trimX:0) + (float)(currentYaw * yawContributionX * pitchYawSign + currentPitch * pitchContributionX * pitchYawSign + currentRoll * rollContributionX) * pitchGimbalRange, -pitchGimbalRange, pitchGimbalRange);
-                var rotY = Mathf.Clamp ((float)(currentYaw * yawContributionY * pitchYawSign + currentPitch * pitchContributionY * pitchYawSign + currentRoll * rollContributionY) * yawGimbalRange * -1, -yawGimbalRange, yawGimbalRange);
+                var rotX = Mathf.Clamp ((enableTrim?trimX:0) + (float)(currentYaw * yawContributionX * pitchYawSign + currentPitch * pitchContributionX * pitchYawSign + currentRoll * rollContributionX) * pitchGimbalRange, -pitchGimbalRange, pitchGimbalRange);
+                var rotY = Mathf.Clamp ((enableTrim?trimY:0) +(float)(currentYaw * yawContributionY * pitchYawSign + currentPitch * pitchContributionY * pitchYawSign + currentRoll * rollContributionY) * yawGimbalRange * -1, -yawGimbalRange, yawGimbalRange);
 
 				Vector3 rotVec = new Vector3 ((float)rotX, (float)rotY, 0f);
 
