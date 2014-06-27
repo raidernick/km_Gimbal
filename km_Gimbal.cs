@@ -25,8 +25,22 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 
+public class axisContribution
+{
+    public bool calculated = false;
+    public double yawContributionX    = 0;
+    public double pitchContributionX  = 0;
+    public double rollContributionX   = 0;
+    public double yawContributionY    = 0;
+    public double pitchContributionY  = 0;
+    public double rollContributionY   = 0;
+    public double pitchYawSign = 0;
+}
+
 namespace km_Lib
 {
+
+
 	public class KM_Gimbal : PartModule
 	{
 		[KSPField(isPersistant = true, guiActive = false, guiActiveEditor = false, guiName = "Transform")]
@@ -38,12 +52,8 @@ namespace km_Lib
 		[KSPField(isPersistant = true, guiActive = false, guiActiveEditor = false, guiName = "Pitch", guiUnits = "°")]//, UI_FloatRange(minValue = 0f, maxValue = 25.0f, stepIncrement = 1.0f)]
 		public float pitchGimbalRange = 1f;
 
-		[KSPField(isPersistant = true, guiActive = false, guiActiveEditor = false, guiName = "Debug")]//, UI_Toggle(disabledText = "Disabled", enabledText = "Enabled")]
-		public bool debug = false;
-
-		[KSPField(isPersistant = true, guiActive = true, guiActiveEditor = false, guiName = "Roll"),
-			UI_Toggle(disabledText = "Disabled", enabledText = "Enabled")]
-		public bool enableRoll = false;
+        [KSPField(isPersistant = true)]//, guiActive = true, guiActiveEditor = true, guiName = "Debug"), UI_Toggle(disabledText = "Disabled", enabledText = "Enabled")]
+        public bool debug = true;
 
         [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "X-Trim") , UI_FloatRange(minValue = -14f, maxValue = 14f, stepIncrement = 1f)]
         public float trimX      = 0;
@@ -57,8 +67,8 @@ namespace km_Lib
             UI_Toggle(disabledText="Disabled", enabledText="Enabled")]
         public bool  enableTrim = true;
 
-		[KSPField(isPersistant = true, guiActive = false, guiActiveEditor = false, guiName = "DebugLevel")]//,UI_FloatRange(minValue = 0f, maxValue = 5f, stepIncrement = 1f)]
-		public float debugLevel = 0;
+        //[KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "DebugLevel"),UI_FloatRange(minValue = 0f, maxValue = 5f, stepIncrement = 1f)]
+        public float debugLevel = 0;
 
 		[KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "CurrentYaw")]
 		private float currentYaw = 0;
@@ -69,9 +79,19 @@ namespace km_Lib
 		[KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "CurrentRoll")]
 		private float currentRoll = 0;
 
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = false, guiName = "Gimbal"),
+        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Constrain gimbal") , UI_FloatRange(minValue = 0f, maxValue = 14f, stepIncrement = 1f)]
+        public float gimbalConstrain      = 14;
+
+        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = false, guiName = "Gimbal"),
 			UI_Toggle(disabledText="Disabled", enabledText="Enabled")]
 		public bool enableGimbal = true;
+
+        // [KSPField(isPersistant = true, guiActive = false, guiActiveEditor = false, guiName = "Performance"),
+        //    UI_Toggle(disabledText="Off", enabledText="Tweaked")]
+        public bool performanceEnabled = true;
+
+        //[KSPField(isPersistant = true, guiActive = false, guiActiveEditor = false, guiName = "Perf Factor"), UI_FloatRange(minValue = 1, maxValue = 30, stepIncrement = 1f)]
+        public float perfFactor = 10;
 
 		[KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Method"),
 			UI_Toggle(disabledText="Precise", enabledText="Smooth")]
@@ -91,14 +111,24 @@ namespace km_Lib
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false)]
         public bool invertRoll = false;
 
-        bool isRunning = false;
+        bool isRunning = false; 
 
-        public List<UnityEngine.Transform>  gimbalTransforms;
-		public List<UnityEngine.Quaternion> initRots;
+        // save transforms and initial rotations
+        public List<UnityEngine.Transform>  gimbalTransforms    = new List<UnityEngine.Transform>();
+        public List<UnityEngine.Quaternion> initRots            = new List<UnityEngine.Quaternion>();
+
+        // Cache for axis contribution
+        public List<axisContribution>       aContrib            = new List<axisContribution>();
+
+        // calculation limiter for reducing computations
+        private int calcCounter = 0;
+
+
 
         private ModuleEngines engine = null;
         private ModuleEnginesFX engineFX = null;
-                		  
+        private bool isMultiMode = false;
+
 		private void printd(int debugPriority, string text){
 			if (debug && debugPriority <= debugLevel)
 				print ("d"+debugPriority+" "+text);
@@ -106,7 +136,7 @@ namespace km_Lib
 
 		[KSPEvent(guiName = "Toggle Debug", guiActive = false)]
 		public void dbg_run (){
-			debugLevel = 3;
+            debugLevel = 0;
 		}
 
 		[KSPAction("Toggle Gimbal")]
@@ -150,12 +180,35 @@ namespace km_Lib
         public void minus5TrimY (KSPActionParam param){
             trimY=trimY-5;
         }
-
-
+            
         [KSPAction("Toggle Trim")]
         public void toggletTrim (KSPActionParam param){
             enableTrim = !enableTrim;
 		}
+
+        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Roll")]
+        public bool enableRoll = false;
+        [KSPField(isPersistant = true)]
+        private bool autoSetRoll = true;
+
+        [KSPEvent(guiName = "Toggle Roll", guiActive = true, guiActiveEditor = true)]
+        public void toggleRoll(){
+            autoSetRoll = false;
+            setRoll (!enableRoll);
+        }
+
+        public void setRoll(bool enabled){
+            enableRoll = enabled;
+            if (Events ["toggleRoll"] != null) {
+                if (enabled) {
+                    Events ["toggleRoll"].guiName = "Deactivate roll";
+                } else {
+                    Events ["toggleRoll"].guiName = "Activate roll";
+                }
+            }
+       }
+
+
 
         private void resetTransform() {
             for (int i = 0; i < gimbalTransforms.Count; i++) {
@@ -170,30 +223,58 @@ namespace km_Lib
                 "KM Gimbal plugin by dtobi";
 		}
 
+
+
 		public override void OnStart (StartState state)
 		{
-			foreach(UnityEngine.Transform transform in part.FindModelTransforms(gimbalTransformName))
-			{
-				gimbalTransforms.Add (transform);
-				printd(0, "Adding transform:"+transform);
-				printd (0, "Rots:"+transform.localRotation);
-				initRots.Add(transform.localRotation);
-			}
+			
+
+            foreach (UnityEngine.Transform transform in part.FindModelTransforms(gimbalTransformName)) {
+                gimbalTransforms.Add(transform);
+                printd (0, "Adding transform:" + transform);
+                printd (0, "Rots:" + transform.localRotation);
+                initRots.Add (transform.localRotation);
+                aContrib.Add (new axisContribution ());
+
+            }
 
             if (state == StartState.Editor) {
+                print ("Roll is enabled?: " + enableRoll);
                 this.part.OnEditorAttach += OnEditorAttach;
                 this.part.OnEditorDetach += OnEditorDetach;
                 this.part.OnEditorDestroy += OnEditorDestroy;
+                setRoll (enableRoll);
                 OnEditorAttach ();
+
+
+
             } else {
-                engineFX = this.part.GetComponentInChildren <ModuleEnginesFX> ();
+
+                // initialize the random to not calc at once
+                calcCounter = (int)UnityEngine.Random.Range (0, 100);
+
+                //first try to find a engineFX... we like pretty flames
+                var engineFXs = this.part.GetComponentsInChildren <ModuleEnginesFX> ();
+                if (engineFXs.Count() > 0) {
+                    engineFX = engineFXs [0];
+                    // if this is a multimode engine, we deactivate the automatic gimbal shutoff
+                    isMultiMode = (engineFXs.Count() > 1);
+                }
+
                 if (engineFX == null) {
                     print ("Gimbal ERROR: ModuleEngineFX not found!");
-                    engine = this.part.GetComponentInChildren <ModuleEngines> ();
-                    if (engine == null)
+                    var engines = this.part.GetComponentsInChildren <ModuleEngines> ();
+                    if (engines.Count () > 0) {
+                        engine = engines [0];
+                        isMultiMode = (engines.Count() > 1);
+                    } else {
                         print ("Gimbal ERROR: No engine module found. ModuleEngines not found!");
+                
+                    }
+
                 }
-               
+                if (isMultiMode)
+                    print ("This is a multimode engine. Deactivated automatic gimbal shutoff");
 
             }
 			base.OnStart (state);
@@ -211,34 +292,41 @@ namespace km_Lib
 				Vector3.Dot(v1, v2));
 		}
 
-		public static double doublePrecision(double number, int digits){
-			var scale = Math.Pow (10, digits);
-			return Math.Round (number * scale) / scale;
-		}
+
+
+
 
 		private void OnEditorAttach()
 		{
 			RenderingManager.AddToPostDrawQueue(99, updateEditor);
+            if (autoSetRoll) {
+                setRoll(this.part.symmetryCounterparts.Count () != 0);
+                print ("KM_Gimbal: Setting roll for auto set:");
+            } else {
+                setRoll(enableRoll);
+                print ("KM_Gimbal: Leaving roll as is:"+enableRoll);
+            }
+            //print("KM_Gimbal: attaching");
 		}
 
 		private void OnEditorDetach()
 		{
 
 			RenderingManager.RemoveFromPostDrawQueue(99, updateEditor);
-			print("KM_Gimbal: OnEditorDetach");
+            //print("KM_Gimbal: OnEditorDetach");
         }
 
 		private void OnEditorDestroy()
 		{
 			RenderingManager.RemoveFromPostDrawQueue(99, updateEditor);
-			print("KM_Gimbal: OnEditorDestroy");
+            //print("KM_Gimbal: OnEditorDestroy");
 
 		}
 
         public override void OnUpdate ()
         {
             // enable activation on action group withou staging
-            if (((engine != null && engine.getIgnitionState)
+            if (!isMultiMode && ((engine != null && engine.getIgnitionState)
                 ||  (engineFX != null && engineFX.getIgnitionState)) && !isRunning) {
                 if(engine != null ) print ("Forcing activation " + engine.getIgnitionState);
                 if(engineFX != null ) print ("Forcing activation " + engineFX.getIgnitionState);
@@ -249,8 +337,7 @@ namespace km_Lib
 		public override void OnFixedUpdate(){
 			if (HighLogic.LoadedSceneIsEditor)
 				return;
-            //if(FlightGlobals.ActiveVessel != vessel)
-            //	return;
+
             updateFlight ();
 		}
 
@@ -269,18 +356,25 @@ namespace km_Lib
 		}
 
 		private void updateFlight(){
-            if (!enableGimbal || (engine != null && !engine.EngineIgnited) || 
-                (engineFX != null && !engineFX.EngineIgnited)) {
+            if (!enableGimbal || (!isMultiMode && ((engine != null && !engine.EngineIgnited) || 
+                (engineFX != null && !engineFX.EngineIgnited)))) {
                 if (isRunning) {
                     resetTransform ();
                     isRunning = false;
+                        print("Engine not running. Turining off gimbal");
                 }
                 return;           
             }
 			    
             isRunning = true;
 
-			// this needs to be here because these varaibles will be changed
+
+
+            calcCounter++;
+
+            float maxPitchGimbalRange = Math.Min (pitchGimbalRange, gimbalConstrain);
+            float maxYawGimbalRange = Math.Min (pitchGimbalRange, gimbalConstrain);
+
             currentPitch = vessel.ctrlState.pitch * (invertPitch?-1:1);
             currentYaw   = vessel.ctrlState.yaw   * (invertYaw?-1:1);
             currentRoll  = vessel.ctrlState.roll  * (invertRoll?-1:1);
@@ -293,40 +387,51 @@ namespace km_Lib
 
 				if (debug) {
 					printd (2, "Engine right:" + gimbalTransforms [i].right);
-					printd (2, "Vessel right:" + vessel.ReferenceTransform.right);
+                    printd (2, "Vessel right:" + vessel.ReferenceTransform.right);
 
 					printd (2, "Engine forward:" + gimbalTransforms [i].forward);
-					printd (2, "Vessel forward:" + vessel.ReferenceTransform.forward);
+                    printd (2, "Vessel forward:" + vessel.ReferenceTransform.forward);
 
 					printd (2, "Engine up:" + gimbalTransforms [i].up);
-					printd (2, "Vessel up:" + vessel.ReferenceTransform.up);
+                    printd (2, "Vessel up:" + vessel.ReferenceTransform.up);
 				}
 
-				// find the vector between engine and vessel
-				Vector3 center = vessel.findWorldCenterOfMass () - part.rigidbody.worldCenterOfMass;
+   
 
-                // Determine the contribution of the engine's x and y rotation on the yaw, pitch, and roll
-				double yawAngleX = AngleSigned (gimbalTransforms [i].right, vessel.ReferenceTransform.right, gimbalTransforms [i].forward) * -1;
-				double pitchAngleX = AngleSigned (gimbalTransforms [i].right, vessel.ReferenceTransform.forward, gimbalTransforms [i].forward);
-				double rollAngleX = (enableRoll ? AngleSigned (gimbalTransforms [i].up, center, gimbalTransforms [i].forward) : 0);
+                if (!performanceEnabled || !aContrib [i].calculated || calcCounter % (int)perfFactor == 0) {
+                   
+                  
 
-				double yawAngleY = AngleSigned (gimbalTransforms [i].up, vessel.ReferenceTransform.right, gimbalTransforms [i].forward);
-				double pitchAngleY = AngleSigned (gimbalTransforms [i].up, vessel.ReferenceTransform.forward, gimbalTransforms [i].forward) * -1;
-				double rollAngleY = (enableRoll ? AngleSigned (gimbalTransforms [i].right, center, gimbalTransforms [i].forward) : 0);
+                    // find the vector between engine and vessel
+                    Vector3 vesselCenterOfMass = vessel.findWorldCenterOfMass ();
+                    Vector3 center = vesselCenterOfMass - gimbalTransforms [i].position;
 
-				double yawContributionX = Math.Sin (yawAngleX);
-				double pitchContributionX = Math.Sin (pitchAngleX);
-				double rollContributionX = (enableRoll ? Math.Sin (rollAngleX) : 0);
+                    // Determine the contribution of the engine's x and y rotation on the yaw, pitch, and roll
+                    double yawAngleX = AngleSigned (gimbalTransforms [i].right, vessel.ReferenceTransform.right, gimbalTransforms [i].forward) * -1;
+                    double pitchAngleX = AngleSigned (gimbalTransforms [i].right, vessel.ReferenceTransform.forward, gimbalTransforms [i].forward);
+                    double rollAngleX = (enableRoll ? AngleSigned (gimbalTransforms [i].up, center, gimbalTransforms [i].forward) : 0);
 
-				double yawContributionY = Math.Sin (yawAngleY);
-				double pitchContributionY = Math.Sin (pitchAngleY);
-				double rollContributionY = (enableRoll ? Math.Sin (rollAngleY) : 0);
+                    double yawAngleY = AngleSigned (gimbalTransforms [i].up, vessel.ReferenceTransform.right, gimbalTransforms [i].forward);
+                    double pitchAngleY = AngleSigned (gimbalTransforms [i].up, vessel.ReferenceTransform.forward, gimbalTransforms [i].forward) * -1;
+                    double rollAngleY = (enableRoll ? AngleSigned (gimbalTransforms [i].right, center, gimbalTransforms [i].forward) : 0);
 
-				// determine if we are in front or behind the CoM tgo flip axis (Goddard style rockets)
-				var pitchYawSign = Math.Sign (Vector3.Dot (vessel.findWorldCenterOfMass () - part.rigidbody.worldCenterOfMass, vessel.transform.up));
+                    aContrib [i].yawContributionX = Math.Sin (yawAngleX);
+                    aContrib [i].pitchContributionX = Math.Sin (pitchAngleX);
+                    aContrib [i].rollContributionX = (enableRoll ? Math.Sin (rollAngleX) : 0);
 
-                var rotX = Mathf.Clamp ((enableTrim?trimX:0) + (float)(currentYaw * yawContributionX * pitchYawSign + currentPitch * pitchContributionX * pitchYawSign + currentRoll * rollContributionX) * pitchGimbalRange, -pitchGimbalRange, pitchGimbalRange);
-                var rotY = Mathf.Clamp ((enableTrim?trimY:0) +(float)(currentYaw * yawContributionY * pitchYawSign + currentPitch * pitchContributionY * pitchYawSign + currentRoll * rollContributionY) * yawGimbalRange * -1, -yawGimbalRange, yawGimbalRange);
+                    aContrib [i].yawContributionY = Math.Sin (yawAngleY);
+                    aContrib [i].pitchContributionY = Math.Sin (pitchAngleY);
+                    aContrib [i].rollContributionY = (enableRoll ? Math.Sin (rollAngleY) : 0);
+
+
+                    // determine if we are in front or behind the CoM tgo flip axis (Goddard style rockets)
+                    //var pitchYawSign = Math.Sign (Vector3.Dot (vessel.findWorldCenterOfMass () - part.rigidbody.worldCenterOfMass, vessel.transform.up));
+                    aContrib [i].pitchYawSign = Math.Sign (Vector3.Dot (center, vessel.ReferenceTransform.up));
+                    aContrib [i].calculated = true;
+                }
+
+                var rotX = Mathf.Clamp ((enableTrim?trimX:0) + (float)(currentYaw * aContrib[i].yawContributionX * aContrib[i].pitchYawSign + currentPitch * aContrib[i].pitchContributionX * aContrib[i].pitchYawSign + currentRoll * aContrib[i].rollContributionX) * maxPitchGimbalRange, -maxPitchGimbalRange, maxPitchGimbalRange);
+                var rotY = Mathf.Clamp ((enableTrim?trimY:0) +(float)(currentYaw * aContrib[i].yawContributionY * aContrib[i].pitchYawSign + currentPitch * aContrib[i].pitchContributionY * aContrib[i].pitchYawSign + currentRoll * aContrib[i].rollContributionY) * maxYawGimbalRange * -1, -maxYawGimbalRange, maxYawGimbalRange);
 
 				Vector3 rotVec = new Vector3 ((float)rotX, (float)rotY, 0f);
 
@@ -344,20 +449,13 @@ namespace km_Lib
 					printd (1, "rotX:" + rotX);
 					printd (1, "rotY:" + rotY);
 
-					printd (1, "pitchYawSign:" + pitchYawSign);
-					printd (2, "yawAngleX:" + doublePrecision (Mathf.Rad2Deg * yawAngleX, 2));
-					printd (2, "pitchAngleX:" + doublePrecision (Mathf.Rad2Deg * pitchAngleX, 2));
-					printd (2, "rollAngleX:" + doublePrecision (Mathf.Rad2Deg * rollAngleX, 2));
 
-					printd (2, "yawAngleY:" + doublePrecision (Mathf.Rad2Deg * yawAngleY, 2));
-					printd (2, "pitchAngleY:" + doublePrecision (Mathf.Rad2Deg * pitchAngleY, 2));
-					printd (2, "rollAngleY:" + doublePrecision (Mathf.Rad2Deg * rollAngleY, 2));
-
-					printd (2, "ycX:" + yawContributionX + " pcX:" + pitchContributionX + " rcX:" + rollContributionX);
-					printd (2, "ycY:" + yawContributionY + " pcY:" + pitchContributionY + " rcX:" + rollContributionY);
-					printd (2, "vessel.ReferenceTransform.right:" + vessel.ReferenceTransform.right);
-					printd (2, "vessel.ReferenceTransform.forward:" + vessel.ReferenceTransform.forward);
-					printd (2, "vessel.ReferenceTransform.up:" + vessel.ReferenceTransform.up);
+                   
+                    printd (2, "ycX:" + aContrib[i].yawContributionX + " pcX:" + aContrib[i].pitchContributionX + " rcX:" + aContrib[i].rollContributionX);
+                    printd (2, "ycY:" + aContrib[i].yawContributionY + " pcY:" + aContrib[i].pitchContributionY + " rcX:" + aContrib[i].rollContributionY);
+					printd (2, "vessel.transform.right:" + vessel.transform.right);
+					printd (2, "vessel.transform.forward:" + vessel.transform.forward);
+					printd (2, "vessel.transform.up:" + vessel.transform.up);
 					printd (1, "vessel.ctrlState.pitch" + vessel.ctrlState.pitch);
 					printd (1, "vessel.ctrlState.yaw" + vessel.ctrlState.yaw);
 					printd (1, "vessel.ctrlState.roll" + vessel.ctrlState.roll);
