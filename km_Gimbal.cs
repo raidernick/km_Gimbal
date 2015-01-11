@@ -320,15 +320,6 @@ namespace km_Gimbal
             trimYRange.maxValue = yawGimbalRange;
             trimYRange.stepIncrement = yawGimbalRange >= 10f ? 1f : yawGimbalRange >= 5f ? 0.5f : 0.25f;
 
-            var gimbalConstrainField = Fields["gimbalConstrain"];
-            gimbalConstrainField.guiActive = pitchGimbalRange > 0 || yawGimbalRange > 0f;
-            gimbalConstrainField.guiActiveEditor = pitchGimbalRange > 0 || yawGimbalRange > 0f;
-            var gimbalConstrainRange = (UI_FloatRange)(state == StartState.Editor ? gimbalConstrainField.uiControlEditor : gimbalConstrainField.uiControlFlight);
-            float maxGimbalRange = Mathf.Max(pitchGimbalRange, yawGimbalRange);
-            gimbalConstrainRange.maxValue = maxGimbalRange;
-            gimbalConstrainRange.stepIncrement = maxGimbalRange >= 10f ? 1f : maxGimbalRange >= 5f ? 0.5f : 0.25f;
-
-
             if (state == StartState.Editor)
             {
                 print("Roll is enabled?: " + enableRoll);
