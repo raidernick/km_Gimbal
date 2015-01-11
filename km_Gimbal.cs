@@ -59,12 +59,22 @@ namespace km_Gimbal
         [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "X-Trim"),
          UI_FloatRange(minValue = -14f, maxValue = 14f, stepIncrement = 1f)]
         public float trimX = 0;
+        public float TrimX
+        {
+            get { return trimX; }
+            set { trimX = Mathf.Clamp(value, pitchGimbalRange * -1.0f, pitchGimbalRange); }
+        }
 
         public float lastTrimX = 0; // remember the last value to know when to update the editor
 
         [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Y-Trim"),
          UI_FloatRange(minValue = -14f, maxValue = 14f, stepIncrement = 1f)]
         public float trimY = 0;
+        public float TrimY
+        {
+            get { return trimY; }
+            set { trimY = Mathf.Clamp(value, yawGimbalRange * -1.0f, yawGimbalRange); }
+        }
 
         public float lastTrimY = 0; // remember the last value to know when to update the editor
 
@@ -84,7 +94,7 @@ namespace km_Gimbal
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "CurrentRoll")]
         private float currentRoll = 0;
 
-        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Constrain gimbal"),
+        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Limit gimbal"),
          UI_FloatRange(minValue = 0f, maxValue = 14f, stepIncrement = 1f)]
         public float gimbalConstrain = 14;
 
@@ -159,49 +169,49 @@ namespace km_Gimbal
         [KSPAction("X Trim +")]
         public void plusTrimX(KSPActionParam param)
         {
-            trimX += 1f;
+            TrimX += 1f;
         }
 
-        [KSPAction("X TrimX -")]
+        [KSPAction("X Trim -")]
         public void minusTrim(KSPActionParam param)
         {
-            trimX -= 1f;
+            TrimX -= 1f;
         }
 
-        [KSPAction("X TrimX +5")]
+        [KSPAction("X Trim +5")]
         public void plus5Trim(KSPActionParam param)
         {
-            trimX += 5f;
+            TrimX += 5f;
         }
 
-        [KSPAction("X TrimX -5")]
+        [KSPAction("X Trim -5")]
         public void minus5Trim(KSPActionParam param)
         {
-            trimX -= 5f;
+            TrimX -= 5f;
         }
 
         [KSPAction("Y Trim +")]
         public void plusTrimY(KSPActionParam param)
         {
-            trimY += 1f;
+            TrimY += 1f;
         }
 
         [KSPAction("Y Trim -")]
         public void minusTrimY(KSPActionParam param)
         {
-            trimY -= 1f;
+            TrimY -= 1f;
         }
 
         [KSPAction("Y Trim +5")]
         public void plus5TrimY(KSPActionParam param)
         {
-            trimY += 5f;
+            TrimY += 5f;
         }
 
         [KSPAction("Y Trim -5")]
         public void minus5TrimY(KSPActionParam param)
         {
-            trimY -= 5f;
+            TrimY -= 5f;
         }
 
         [KSPAction("Toggle Trim")]
@@ -230,14 +240,20 @@ namespace km_Gimbal
             {
                 if (enabled)
                 {
-                    Events["toggleRoll"].guiName = "Deactivate roll";
+                    Events["toggleRoll"].guiName = "Deactivate Roll";
                 }
                 else
                 {
-                    Events["toggleRoll"].guiName = "Activate roll";
+                    Events["toggleRoll"].guiName = "Activate Roll";
                 }
             }
         }
+
+        [KSPField(isPersistant = true)]
+        public bool hideSpeedEditing = false;
+
+        [KSPField(isPersistant = true)]
+        public bool hideRollEditing = false;
 
 
         private void resetTransform()
@@ -250,9 +266,9 @@ namespace km_Gimbal
 
         public override string GetInfo()
         {
-            return "Yaw Gimbal\n" + yawGimbalRange + "\n" +
-                   "Pitch Gimbal\n" + pitchGimbalRange + "\n" +
-                   "KM Gimbal plugin by dtobi";
+            return "Yaw Gimbal: " + yawGimbalRange + "\n" +
+                   "Pitch Gimbal: " + pitchGimbalRange + "\n" +
+                   "KM Gimbal plugin by dtobi & sarbian";
         }
 
 
@@ -267,6 +283,25 @@ namespace km_Gimbal
                 printd(0, "Rots:" + transform.localRotation);
                 initRots.Add(transform.localRotation);
                 aContrib.Add(new axisContribution());
+            }
+
+            if (hideSpeedEditing)
+            {
+                var enableSmoothGimbalField = Fields["enableSmoothGimbal"];
+                enableSmoothGimbalField.guiActive = false;
+                enableSmoothGimbalField.guiActiveEditor = false;
+                var responseSpeedField = Fields["responseSpeed"];
+                responseSpeedField.guiActive = false;
+                responseSpeedField.guiActiveEditor = false;
+            }
+            if (hideRollEditing)
+            {
+                var enableRollField = Fields["enableRoll"];
+                enableRollField.guiActive = false;
+                enableRollField.guiActiveEditor = false;
+                var toggleRollEvent = Events["toggleRoll"];
+                toggleRollEvent.guiActive = false;
+                toggleRollEvent.guiActiveEditor = false;
             }
 
             var trimXField = Fields["trimX"];
@@ -284,6 +319,15 @@ namespace km_Gimbal
             trimYRange.minValue = -yawGimbalRange;
             trimYRange.maxValue = yawGimbalRange;
             trimYRange.stepIncrement = yawGimbalRange >= 10f ? 1f : yawGimbalRange >= 5f ? 0.5f : 0.25f;
+
+            var gimbalConstrainField = Fields["gimbalConstrain"];
+            gimbalConstrainField.guiActive = pitchGimbalRange > 0 || yawGimbalRange > 0f;
+            gimbalConstrainField.guiActiveEditor = pitchGimbalRange > 0 || yawGimbalRange > 0f;
+            var gimbalConstrainRange = (UI_FloatRange)(state == StartState.Editor ? gimbalConstrainField.uiControlEditor : gimbalConstrainField.uiControlFlight);
+            float maxGimbalRange = Mathf.Max(pitchGimbalRange, yawGimbalRange);
+            gimbalConstrainRange.maxValue = maxGimbalRange;
+            gimbalConstrainRange.stepIncrement = maxGimbalRange >= 10f ? 1f : maxGimbalRange >= 5f ? 0.5f : 0.25f;
+
 
             if (state == StartState.Editor)
             {
