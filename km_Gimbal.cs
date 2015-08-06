@@ -271,7 +271,6 @@ namespace km_Gimbal
                    "KM Gimbal plugin by dtobi & sarbian";
         }
 
-
         public override void OnStart(StartState state)
         {
             Transform[] array = part.FindModelTransforms(gimbalTransformName);
@@ -320,6 +319,19 @@ namespace km_Gimbal
             trimYRange.maxValue = yawGimbalRange;
             trimYRange.stepIncrement = yawGimbalRange >= 10f ? 1f : yawGimbalRange >= 5f ? 0.5f : 0.25f;
 
+
+            // Allow gimbalConstrain over 14.
+            BaseField field = Fields["gimbalConstrain"];
+            if (field != null)
+            {
+                UI_FloatRange range = (UI_FloatRange) field.uiControlEditor;
+                if (range != null)
+                {
+                    if (gimbalConstrain > range.maxValue)
+                        range.maxValue = gimbalConstrain;
+                }
+            }
+            
             if (state == StartState.Editor)
             {
                 print("Roll is enabled?: " + enableRoll);
@@ -422,6 +434,7 @@ namespace km_Gimbal
                 }
                 part.force_activate();
             }
+            print(gimbalConstrain.ToString("F1"));
         }
 
         public override void OnFixedUpdate()
