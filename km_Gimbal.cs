@@ -94,10 +94,6 @@ namespace km_Gimbal
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "CurrentRoll")]
         private float currentRoll = 0;
 
-        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Limit gimbal"),
-         UI_FloatRange(minValue = 0f, maxValue = 14f, stepIncrement = 1f)]
-        public float gimbalConstrain = 14;
-
         [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Gimbal"),
          UI_Toggle(disabledText = "Disabled", enabledText = "Enabled")]
         public bool enableGimbal = true;
@@ -271,6 +267,7 @@ namespace km_Gimbal
                    "KM Gimbal plugin by dtobi & sarbian";
         }
 
+
         public override void OnStart(StartState state)
         {
             Transform[] array = part.FindModelTransforms(gimbalTransformName);
@@ -319,19 +316,6 @@ namespace km_Gimbal
             trimYRange.maxValue = yawGimbalRange;
             trimYRange.stepIncrement = yawGimbalRange >= 10f ? 1f : yawGimbalRange >= 5f ? 0.5f : 0.25f;
 
-
-            // Allow gimbalConstrain over 14.
-            BaseField field = Fields["gimbalConstrain"];
-            if (field != null)
-            {
-                UI_FloatRange range = (UI_FloatRange) field.uiControlEditor;
-                if (range != null)
-                {
-                    if (gimbalConstrain > range.maxValue)
-                        range.maxValue = gimbalConstrain;
-                }
-            }
-            
             if (state == StartState.Editor)
             {
                 print("Roll is enabled?: " + enableRoll);
@@ -434,7 +418,6 @@ namespace km_Gimbal
                 }
                 part.force_activate();
             }
-            print(gimbalConstrain.ToString("F1"));
         }
 
         public override void OnFixedUpdate()
@@ -484,8 +467,8 @@ namespace km_Gimbal
 
             calcCounter++;
 
-            float maxPitchGimbalRange = Math.Min(pitchGimbalRange, gimbalConstrain);
-            float maxYawGimbalRange = Math.Min(yawGimbalRange, gimbalConstrain);
+            float maxPitchGimbalRange = pitchGimbalRange;
+            float maxYawGimbalRange = yawGimbalRange;
 
             currentPitch = vessel.ctrlState.pitch * (invertPitch ? -1f : 1f);
             currentYaw = vessel.ctrlState.yaw * (invertYaw ? -1f : 1f);
