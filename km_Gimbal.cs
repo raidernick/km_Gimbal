@@ -115,6 +115,10 @@ namespace km_Gimbal
 
         public float maxResponseSpeed = 100f;
 
+        public bool useExponentGimbal = false;
+
+        public float expResponseSpeed = 8.0f;
+
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false)]
         public bool invertPitch = false;
 
@@ -552,12 +556,24 @@ namespace km_Gimbal
 
                 if (enableSmoothGimbal)
                 {
-                    printd(3, "Animated Gimbal");
-                    gimbalTransforms[i].Rotate(rotVec);
-                    gimbalTransforms[i].localRotation = Quaternion.RotateTowards(
-                        savedRot,
-                        gimbalTransforms[i].localRotation,
-                        responseSpeed * TimeWarp.fixedDeltaTime);
+                    if (useExponentGimbal)
+                    {
+                        printd(3, "Animated Lerp Gimbal");
+                        gimbalTransforms[i].Rotate(rotVec);
+                        gimbalTransforms[i].localRotation = Quaternion.Lerp(
+                            savedRot,
+                            gimbalTransforms[i].localRotation,
+                            expResponseSpeed * TimeWarp.fixedDeltaTime);
+                    }
+                    else
+                    {
+                        printd(3, "Animated Gimbal");
+                        gimbalTransforms[i].Rotate(rotVec);
+                        gimbalTransforms[i].localRotation = Quaternion.RotateTowards(
+                            savedRot,
+                            gimbalTransforms[i].localRotation,
+                            responseSpeed * TimeWarp.fixedDeltaTime);
+                    }                    
                 }
                 else
                 {
