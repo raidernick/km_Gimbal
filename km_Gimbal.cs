@@ -221,10 +221,10 @@ namespace km_Gimbal
         }
 
         [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = true, guiName = "Roll")]
-        public bool enableRoll = false;
+        public bool enableRoll = true;
 
         [KSPField(isPersistant = true)]
-        private bool autoSetRoll = true;
+        private bool autoSetRoll = false;
 
         [KSPEvent(guiName = "Toggle Roll", guiActive = true, guiActiveEditor = true)]
         public void toggleRoll()
