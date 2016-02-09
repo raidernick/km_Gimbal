@@ -19,4 +19,4 @@
 // You can specify all the values or you can default the Build and Revision Numbers
 // by using the '*' as shown below:
 [assembly: AssemblyVersion("3.0.5.0")] // TODO : freeze that one to a round version for the next one
-[assembly: AssemblyFileVersion("3.0.6.0")]
+[assembly: AssemblyFileVersion("3.0.7.0")]
